@@ -1,0 +1,1831 @@
+Hi, to all who seen this post. This is SPI code for configuring the 
+3port switch for VLAN function,port forwarding and receiving, 
+tramistting queue function,Rate limiting function,prirority function etc.
+when i search for reference code in github i got only c driver files 
+in that file they used all registers like messy so, I read datasheet 
+many times and finally I figure out the Registers.I posted this 
+register value which might helpfull for beginners who's going to work 
+in "L2-Managable Switch".
+
+////////////////////////// "1326" //////////////////////////////////////////////////////
+
+`timescale 1ns / 1ps
+//////////////////////////////////////////////////////////////////////////////////
+// Company: 
+// Engineer: 
+// 
+// Create Date: 08.07.2021 18:37:26
+// Design Name: 
+// Module Name: spi_config
+// Project Name: 
+// Target Devices: 
+// Tool Versions: 
+// Description: 
+// 
+// Dependencies: 
+// 
+// Revision:
+// Revision 0.01 - File Created
+// Additional Comments:
+// 
+//////////////////////////////////////////////////////////////////////////////////
+
+module spi_config_control(clk_100Mhz,
+reset,
+hard_rst,
+mosi,
+miso,
+slave_sel,
+slave_clock,
+write_address,
+write_add_count,
+read_address,
+read_add_count,
+rec_data,
+state);
+
+
+input clk_100Mhz;               
+input reset;
+output reg hard_rst;
+output reg mosi;
+input miso;
+output reg slave_sel;
+output reg slave_clock;
+output [15:0] write_address;
+output [7:0] write_add_count;
+output [15:0] read_address;
+output [6:0] read_add_count;
+output reg[7:0] rec_data;
+
+
+/////////////////////////////
+output reg [6:0]state;
+reg [3:0] hard_rst_state;
+wire [3:0] d_count;
+//assign d_count = count;
+reg stop;
+reg START;
+wire start;
+assign start = START;
+//SPI WRITE
+reg [15:0] write_add;
+reg [7:0] write_dat;
+wire [7:0] write_data;
+reg [7:0]write_address_count;
+assign write_address = write_add;
+assign write_data = write_dat;
+assign write_add_count = write_address_count;
+
+//SPI READ
+reg[15:0]read_add;
+reg [6:0]read_address_count;
+assign read_address = read_add;
+assign read_add_count = read_address_count;
+
+
+
+
+
+reg [31:0] t_count;
+reg [3:0] RC;
+reg [3:0] count;
+wire STOP;
+assign STOP = stop;
+assign d_count = count;
+
+
+reg [19:0] hard_count;
+
+
+parameter stop_write = 8'd175,stop_read = 7'd6;
+
+
+always@(posedge clk_100Mhz or negedge reset)
+begin 
+if(!reset)
+  begin 
+       hard_count<=20'd0;
+       hard_rst  <=1'b1;
+       START    <=1'b0;
+       hard_rst_state<=4'd0;
+end 
+else 
+begin
+ case(hard_rst_state)
+4'd0:begin 
+       hard_count<=20'd0;
+       hard_rst<=1'b1;
+       hard_rst_state <= 4'd1;
+end 
+
+4'd1:begin 
+    if(hard_count == 20'd1020000)
+     begin 
+        hard_rst<=1'b0;
+        hard_count<=20'd0;
+        hard_rst_state<=4'd2;
+     end 
+else 
+    begin 
+       hard_rst<=1'b1;
+       hard_count<=hard_count + 20'd1;
+       hard_rst_state<=4'd1;
+    end 
+end 
+
+4'd2:begin 
+       if(hard_count ==20'd10000)
+    begin 
+       hard_rst<=1'b1;
+       hard_count<=20'd0;
+       hard_rst_state<=4'd3;
+    end 
+else 
+   begin 
+       hard_rst<=1'b0;
+       hard_count<=hard_count + 20'd1;
+       hard_rst_state<=4'd2;
+   end 
+end 
+
+4'd3:begin 
+       if(hard_count == 20'd10000)
+    begin 
+       hard_count<=20'd0;
+       hard_rst_state<=4'd4;
+    end 
+else 
+   begin 
+       hard_count<=hard_count + 20'd1;
+       hard_rst_state<=4'd3;
+   end 
+end 
+
+4'd4:begin 
+      START<=1'b1;
+      hard_rst_state<=4'd5;
+end 
+
+4'd5:begin
+      START<=1'b1;
+      hard_rst_state<=4'd5;
+end 
+
+default:begin 
+        START<=1'b0;
+        hard_count<=20'd0;
+        hard_rst<=1'b1;
+        hard_rst_state<=4'd0;
+end 
+endcase 
+end 
+end
+
+always@(posedge clk_100Mhz or negedge reset)
+begin 
+if(!reset)
+begin
+count<=4'd0;
+t_count<=31'd0;
+slave_clock<=1'b0;
+slave_sel<=1'b1;
+RC<=4'd0;
+end 
+else 
+begin
+case(RC)
+
+4'd0:begin 
+
+if(start == 1'b1)
+  begin 
+  t_count<=32'd0;
+slave_clock<=1'b0;
+slave_sel<=1'b1;
+RC<=4'd1;
+end 
+else 
+ begin 
+ t_count<=32'd0;
+slave_clock<=1'b0;
+slave_sel<=1'b1;
+RC<=4'd0;
+end 
+end 
+
+4'd1:begin 
+if(t_count == 32'd5 )
+begin 
+t_count<=32'd0;
+slave_clock<=1'b0;
+slave_sel<=1'b0;
+RC<=4'd2;
+end 
+else 
+begin 
+t_count<=t_count+32'd1;
+slave_clock<=1'b0;
+slave_sel<=1'b1;
+RC<=4'd1;
+end 
+end 
+
+
+4'd2:begin 
+ if(STOP== 1'd1)
+begin 
+count<=4'd0;
+slave_clock<=1'b0;
+slave_sel<=1'b1;
+RC<=4'd5;
+end 
+else 
+begin
+count<=count+4'd1;
+slave_clock<=1'b0;
+RC<=4'd3;
+end 
+end 
+
+
+
+4'd3:begin 
+if(count == 4'd5)
+begin 
+count<=count+4'd1;
+slave_clock<=1'b1;
+RC<=4'd4;
+end 
+else 
+begin
+count<=count+4'd1;
+slave_clock<=1'b1;
+RC<=4'd3;
+end 
+end 
+
+4'd4:begin 
+if(count == 4'd9)
+begin 
+count<=4'd0;
+slave_clock<=1'b0;
+RC<=4'd2;
+end 
+else 
+begin
+count<=count+4'd1;
+slave_clock<=1'b0;
+RC<=4'd4;
+end 
+end 
+
+4'd5:begin 
+if(STOP== 1'd1)
+begin 
+count<=4'd0;
+t_count<=32'd0;
+slave_clock<=1'b0;
+slave_sel<=1'b1;
+RC<=4'd6;
+end 
+else 
+begin 
+count<=4'd0;
+t_count<=32'd0;
+slave_clock<=1'b0;
+slave_sel<=1'b1;
+RC<=4'd1;
+end 
+end 
+
+4'd6:begin
+count<=4'd0;
+t_count<=32'd0;
+slave_clock<=1'b0;
+slave_sel<=1'b1;
+RC<=4'd6;
+end 
+
+
+default:begin 
+count<=4'd0;
+t_count<=31'd0;
+slave_sel<=1'b1;
+slave_clock<=1'b0;
+RC<=4'd0;
+end 
+endcase 
+end 
+end
+
+////////////////////////////////////////////////////////////// WRITE THIS REGISTERS TO CONFIG KSZ9893R SWITCH ///////////////////////////////////
+always@(posedge clk_100Mhz or negedge reset)
+begin 
+if(!reset)
+ begin 
+ write_add<=16'h00;
+ write_dat<=8'h00;
+ end 
+ else 
+ begin
+case(write_add_count)
+//////////////////////////////////////////BELOW REGISTERS UPTO 37 IS NECESSARY//////
+// Global switch control register//
+//5.1.4.1 soft hardware reset
+8'd0:begin  
+write_add<=16'h0300;
+write_dat<=8'h02;
+end
+//5.1.2.1 spi out configuration
+8'd1:begin  
+write_add<=16'h0100;
+write_dat<=8'h02;
+end
+//5.1.4.1 SWITCH FUNCTION ENABLE REGISTER
+8'd2:begin 
+write_add<=16'h0300;
+write_dat<=8'h01;
+end 
+//5.1.4.8 Switch Maximum Transmit Unit Register [frame size ->9000]
+8'd3:begin 
+write_add<=16'h0308;
+write_dat<=8'h07;
+end 
+8'd4:begin 
+write_add<=16'h0309;
+write_dat<=8'hD0;
+end 
+/*
+//5.1.4.9 Switch ISP TPID Register
+8'd5:begin 
+write_add<=16'h0309;
+write_dat<=8'h91;
+end 
+8'd6:begin 
+write_add<=16'h0309;
+write_dat<=8'h00;
+end 
+*/
+//5.1.4.10 Switch Lookup Engine Control 0 Register
+8'd7:begin 
+write_add<=16'h0310;
+write_dat<=8'hA5; //25 ?????????????????
+end
+// 5.1.4.11 Switch Lookup Engine Control 1 Register 
+8'd8:begin 
+write_add<=16'h0311;
+write_dat<=8'hec;
+end
+// 5.1.4.12 Switch Lookup Engine Control 2 Register no need now 
+8'd9:begin 
+write_add<=16'h0312;
+write_dat<=8'h34; //34->EGRESS VLAN FILTERING 04-> Disable
+end
+//5.1.4.13 Switch Lookup Engine Control 3 Register
+8'd10:begin 
+write_add<=16'h0312;
+write_dat<=8'h4b;
+end
+//Packets forwarding with unknown VID
+// [i] 5.1.4.19 Unknown Unicast Control Register
+//Need to enable above function make 0320-> 8-bit as '1' and 0328 -> [2:0] bit refer port frwd [p3,p2,p1]
+8'd11:begin  
+write_add<=16'h0320;
+write_dat<=8'h00; 
+end
+8'd12:begin  
+write_add<=16'h0323;
+write_dat<=8'h00; 
+end
+//[ii]5.1.4.20 Unknown Multicast Control Register
+//Need to enable above function make 0320-> 8-bit as '1' and 0328 -> [2:0] bit refer port frwd [p3,p2,p1]
+8'd13:begin  
+write_add<=16'h0324;
+write_dat<=8'h00; 
+end
+8'd14:begin  
+write_add<=16'h0327;
+write_dat<=8'h00; 
+end
+//[iii] 5.1.4.21 Unknown VLAN ID Control Register
+//Need to enable above function make 0320-> 8-bit as '1' and 0328 -> [2:0] bit refer port frwd [p3,p2,p1]
+8'd15:begin  
+write_add<=16'h0328;
+write_dat<=8'h80; 
+end
+8'd16:begin  
+write_add<=16'h032B;
+write_dat<=8'h07; 
+end
+//5.1.4.22 Switch MAC Control 0 Register
+8'd17:begin  
+write_add<=16'h0330;
+write_dat<=8'h0e; 
+end
+//5.1.4.23 Switch MAC Control 1 Register 
+8'd18:begin  
+write_add<=16'h0331;
+write_dat<=8'he3; 
+end
+//5.1.4.24 Switch MAC Control 2 Register // EGRESS TAG
+8'd19:begin  
+write_add<=16'h0332; 
+write_dat<=8'h04; 
+end
+//5.1.4.25 Switch MAC Control 3 Register 
+8'd20:begin  
+write_add<=16'h0333;
+write_dat<=8'h4A; 
+end
+////5.1.4.66 Global Port Mirroring and Snooping Control Register 
+//8'd21:begin  
+//write_add<=16'h0370;
+//write_dat<=8'h4D; 
+//end
+//5.1.4.68 Queue Management Control 0 Register ?????????
+8'd22:begin  
+write_add<=16'h0393;
+write_dat<=8'h82; 
+end
+/////////////////////////// VLAN TABLE ENTRY //////////////////////////////////
+
+// GLOBAL SWITCH LOOK UP ENGINE (LUE) CONTROL REGISTERS
+//5.1.5.1 VLAN Table Entry 0 Register - TABLE ENTRY VALID - FORWARDING OPTION
+8'd23:begin 
+write_add<=16'h0400;
+write_dat<=8'h80; //80
+end
+//5.1.5.3 VLAN Table Entry 0 Register -PRIORITY
+8'd24:begin 
+write_add<=16'h0401;
+write_dat<=8'h00;
+end
+//5.1.5.3 VLAN Table Entry 0 Register - MSTP INDEX
+8'd25:begin 
+write_add<=16'h0402;
+write_dat<=8'h70;
+end
+//5.1.5.3 VLAN Table Entry 0 Register - FID AWLAYS WILL BE 01
+8'd26:begin 
+write_add<=16'h0403;
+write_dat<=8'h01; 
+end
+//5.1.5.3 VLAN Table Entry 1 Register
+8'd27:begin 
+write_add<=16'h0407;
+write_dat<=8'h07;
+end
+//5.1.5.3 VLAN Table Entry 2 Register
+8'd28:begin 
+write_add<=16'h040B;
+write_dat<=8'h07;
+end
+//5.1.5.3 VLAN Table Index Register
+8'd29:begin 
+write_add<=16'h040C;
+write_dat<=8'h00;
+end
+8'd30:begin 
+write_add<=16'h040D;
+write_dat<=8'h01;
+end
+//5.1.5.5 VLAN Table Access Control Register 
+8'd31:begin 
+write_add<=16'h040E;
+write_dat<=8'h81;
+end
+//Port register
+//5.2.1.1 Port Default Tag 0 Register
+//port-1
+8'd32:begin 
+write_add<=16'h1000;
+write_dat<=8'h00;
+end 
+8'd33:begin 
+write_add<=16'h1001;
+write_dat<=8'h01;
+end 
+//port-2
+8'd34:begin 
+write_add<=16'h2000;
+write_dat<=8'h00;
+end 
+8'd35:begin 
+write_add<=16'h2001;
+write_dat<=8'h01;
+end 
+//port-3
+8'd36:begin 
+write_add<=16'h3000;
+write_dat<=8'h00;
+end 
+8'd37:begin 
+write_add<=16'h3001;
+write_dat<=8'h01;
+end 
+// 5.2.1.7 Port Operation Control 0 Register 
+//Enabling tail tagging for port -3
+8'd38:begin 
+write_add<=16'h3020;
+write_dat<=8'h06;
+end 
+//5.2.2.1 PHY Basic Control Register
+//normal 1000 speed up set N100 -> 10 for remote loopback make N100 ->13 100speed link up N100 -> 11
+//port-1
+8'd39:begin  
+write_add<=16'h1100;
+write_dat<=8'h10; 
+end
+8'd40:begin  
+write_add<=16'h1101;
+write_dat<=8'h40; 
+end
+//port-2
+8'd41:begin  
+write_add<=16'h2100;
+write_dat<=8'h10; 
+end
+8'd42:begin  
+write_add<=16'h2101;
+write_dat<=8'h40; 
+end
+
+//5.2.2.10 PHY 1000BASE-T Control Register
+// setting master slave while negotiation and full duplex
+//port-1
+8'd43:begin  
+write_add<=16'h1112;
+write_dat<=8'h12; 
+end
+8'd44:begin  
+write_add<=16'h1113;
+write_dat<=8'h00; 
+end
+//port-2
+8'd45:begin  
+write_add<=16'h2112;
+write_dat<=8'h12; 
+end
+8'd46:begin  
+write_add<=16'h2113;
+write_dat<=8'h00; 
+end
+//5.2.2.15 PHY Remote Loopback Register
+//For normal operation make N122 -> 00
+//For Remote loopback make N122 ->01
+//port-1
+8'd47:begin  
+write_add<=16'h1122;
+write_dat<=8'h00; 
+end
+8'd48:begin  
+write_add<=16'h1123;
+write_dat<=8'hf0; 
+end
+//port-2
+8'd49:begin  
+write_add<=16'h2122;
+write_dat<=8'h00; 
+end
+8'd50:begin  
+write_add<=16'h2123;
+write_dat<=8'hf0; 
+end
+//5.2.2.20 PHY Auto MDI / MDI-X Register
+//First make 6-bit as '1'
+//set N139 -> '40' MDI-X mode (same device[board to board])
+//set N139 -> 'c0' MDI mode(different device [board to pc])
+//port-1
+8'd51:begin  
+write_add<=16'h1139;
+write_dat<=8'h00; 
+end
+//port-2
+8'd52:begin  
+write_add<=16'h2139;
+write_dat<=8'h00; 
+end
+//5.2.3.2 XMII Port Control 0 Register
+8'd53:begin  
+write_add<=16'h3301;
+write_dat<=8'h5b; 
+end
+////5.2.4.1 Port MAC Control 0 Register
+////Back strom protection to enable make 2-bit as '1'
+////crc error,too large ,too small to drop make 0-bit as '1'
+////port-1
+//8'd54:begin  
+//write_add<=16'h1400;
+//write_dat<=8'h00; 
+//end
+////port-1
+//8'd55:begin  
+//write_add<=16'h2400;
+//write_dat<=8'h00; 
+//end
+////port-1
+//8'd56:begin  
+//write_add<=16'h3400;
+//write_dat<=8'h00; 
+//end
+//5.2.10.1 Port Control 2 Register
+//PORT -1
+8'd57:begin  
+write_add<=16'h1B00;
+write_dat<=8'h08; 
+end
+//PORT -2
+8'd58:begin  
+write_add<=16'h2B00;
+write_dat<=8'h08; 
+end
+//PORT -3
+8'd59:begin  
+write_add<=16'h3B00;
+write_dat<=8'h08; 
+end
+//////////////////////MSTP PORT REGISTERS ////
+//PORT->1
+//5.2.10.2 Port MSTP Pointer Register 
+8'd60:begin 
+write_add<=16'h1B01;
+write_dat<=8'h00;
+end
+//5.2.10.3 Port MSTP State Register
+8'd61:begin 
+write_add<=16'h1B04;
+write_dat<=8'h01;  //Disable state
+end
+//5.2.10.2 Port MSTP Pointer Register 
+8'd62:begin 
+write_add<=16'h1B01;
+write_dat<=8'h01;  
+end
+//5.2.10.3 Port MSTP State Register
+8'd63:begin 
+write_add<=16'h1B04;
+write_dat<=8'h01;  // blocking state
+end
+//5.2.10.2 Port MSTP Pointer Register 
+8'd64:begin 
+write_add<=16'h1B01;
+write_dat<=8'h02;
+end
+//5.2.10.3 Port MSTP State Register
+8'd65:begin 
+write_add<=16'h1B04;
+write_dat<=8'h01;  //listening state
+end
+//5.2.10.2 Port MSTP Pointer Register 
+8'd66:begin 
+write_add<=16'h1B01;
+write_dat<=8'h03;
+end
+//5.2.10.3 Port MSTP State Register
+8'd67:begin 
+write_add<=16'h1B04;
+write_dat<=8'h00;  // learning state
+end
+//5.2.10.2 Port MSTP Pointer Register 
+8'd68:begin 
+write_add<=16'h1B01;
+write_dat<=8'h04;
+end
+//5.2.10.3 Port MSTP State Register
+8'd69:begin 
+write_add<=16'h1B04;
+write_dat<=8'h06; //Forwarding state
+end
+//5.2.10.2 Port MSTP Pointer Register 
+8'd70:begin 
+write_add<=16'h1B01;
+write_dat<=8'h05; 
+end
+//5.2.10.3 Port MSTP State Register
+8'd71:begin 
+write_add<=16'h1B04;
+write_dat<=8'h01;  // Discarding state
+end
+//5.2.10.2 Port MSTP Pointer Register 
+8'd72:begin 
+write_add<=16'h1B01;
+write_dat<=8'h06;
+end
+//5.2.10.3 Port MSTP State Register
+8'd73:begin 
+write_add<=16'h1B04;
+write_dat<=8'h00;   //Learning state
+end
+//5.2.10.2 Port MSTP Pointer Register 
+8'd74:begin 
+write_add<=16'h1B01;
+write_dat<=8'h07;
+end
+//5.2.10.3 Port MSTP State Register
+8'd75:begin 
+write_add<=16'h1B04;
+write_dat<=8'h06;  //Forwarding state
+end
+//////////////////////////
+//PORT->2
+//5.2.10.2 Port MSTP Pointer Register 
+8'd76:begin 
+write_add<=16'h2B01;
+write_dat<=8'h00;
+end
+//5.2.10.3 Port MSTP State Register
+8'd77:begin 
+write_add<=16'h2B04;
+write_dat<=8'h01;  //Disable state
+end
+//5.2.10.2 Port MSTP Pointer Register 
+8'd78:begin 
+write_add<=16'h2B01;
+write_dat<=8'h01;
+end
+//5.2.10.3 Port MSTP State Register
+8'd79:begin 
+write_add<=16'h2B04;
+write_dat<=8'h01;  //Blocking state
+end
+//5.2.10.2 Port MSTP Pointer Register 
+8'd80:begin 
+write_add<=16'h2B01;
+write_dat<=8'h02;
+end
+//5.2.10.3 Port MSTP State Register
+8'd81:begin 
+write_add<=16'h2B04;
+write_dat<=8'h01;  //listening state
+end
+//5.2.10.2 Port MSTP Pointer Register 
+8'd82:begin 
+write_add<=16'h2B01;
+write_dat<=8'h03;
+end
+//5.2.10.3 Port MSTP State Register
+8'd83:begin 
+write_add<=16'h2B04;
+write_dat<=8'h00;  //learning state
+end
+//5.2.10.2 Port MSTP Pointer Register 
+8'd84:begin 
+write_add<=16'h2B01;
+write_dat<=8'h04;
+end
+//5.2.10.3 Port MSTP State Register
+8'd85:begin 
+write_add<=16'h2B04;
+write_dat<=8'h06;  //Forwarding state
+end
+//5.2.10.2 Port MSTP Pointer Register 
+8'd86:begin 
+write_add<=16'h2B01;
+write_dat<=8'h05;
+end
+//5.2.10.3 Port MSTP State Register
+8'd87:begin 
+write_add<=16'h2B04;
+write_dat<=8'h01; //Discarding state
+end
+//5.2.10.2 Port MSTP Pointer Register 
+8'd88:begin 
+write_add<=16'h2B01;
+write_dat<=8'h06;
+end
+//5.2.10.3 Port MSTP State Register
+8'd89:begin 
+write_add<=16'h2B04;
+write_dat<=8'h00;  //learning state
+end
+//5.2.10.2 Port MSTP Pointer Register 
+8'd90:begin 
+write_add<=16'h2B01;
+write_dat<=8'h07;
+end
+//5.2.10.3 Port MSTP State Register
+8'd91:begin 
+write_add<=16'h2B04;
+write_dat<=8'h06; //Forwarding state
+end
+//////////////////////
+//PORT->3
+//5.2.10.2 Port MSTP Pointer Register 
+8'd92:begin 
+write_add<=16'h3B01;
+write_dat<=8'h00;
+end
+//5.2.10.3 Port MSTP State Register
+8'd93:begin 
+write_add<=16'h3B04;
+write_dat<=8'h01;  //Disable state
+end
+//5.2.10.2 Port MSTP Pointer Register 
+8'd94:begin 
+write_add<=16'h3B01;
+write_dat<=8'h01;
+end
+//5.2.10.3 Port MSTP State Register
+8'd95:begin 
+write_add<=16'h3B04;
+write_dat<=8'h01;  //Bloacking state
+end
+//5.2.10.2 Port MSTP Pointer Register 
+8'd96:begin 
+write_add<=16'h3B01;
+write_dat<=8'h02;
+end
+//5.2.10.3 Port MSTP State Register
+8'd97:begin 
+write_add<=16'h3B04;
+write_dat<=8'h01;  //Listening state
+end
+//5.2.10.2 Port MSTP Pointer Register 
+8'd98:begin 
+write_add<=16'h3B01;
+write_dat<=8'h03; 
+end
+//5.2.10.3 Port MSTP State Register
+8'd99:begin 
+write_add<=16'h3B04;
+write_dat<=8'h00;  //Learning state
+end
+//5.2.10.2 Port MSTP Pointer Register 
+8'd100:begin 
+write_add<=16'h3B01;
+write_dat<=8'h04;
+end
+//5.2.10.3 Port MSTP State Register
+8'd101:begin 
+write_add<=16'h3B04;
+write_dat<=8'h06; //Forwarding state
+end
+//5.2.10.2 Port MSTP Pointer Register 
+8'd102:begin 
+write_add<=16'h3B01;
+write_dat<=8'h05;
+end
+//5.2.10.3 Port MSTP State Register
+8'd103:begin 
+write_add<=16'h3B04;
+write_dat<=8'h01; //Discarding state
+end
+//5.2.10.2 Port MSTP Pointer Register 
+8'd104:begin 
+write_add<=16'h3B01;
+write_dat<=8'h06;  
+end
+//5.2.10.3 Port MSTP State Register
+8'd105:begin 
+write_add<=16'h3B04;
+write_dat<=8'h00;  //Learning state
+end
+//5.2.10.2 Port MSTP Pointer Register 
+8'd106:begin 
+write_add<=16'h3B01;
+write_dat<=8'h07;    
+end
+//5.2.10.3 Port MSTP State Register
+8'd107:begin 
+write_add<=16'h3B04;
+write_dat<=8'h06;  //Forwarding state
+end
+/////STATIC ADDRESS TABLE -> 00-26-55-DB-F1-2A ////////////////////
+//5.3.2.3 Static Address Table Entry 1 Register
+8'd108:begin 
+write_add<=16'h0420;
+write_dat<=8'h9C; //c0
+end
+8'd109:begin 
+write_add<=16'h0423;
+write_dat<=8'h07;
+end
+//5.3.2.4 Static Address Table Entry 2 Register
+8'd110:begin 
+write_add<=16'h0424;
+write_dat<=8'h84;
+end
+8'd111:begin 
+write_add<=16'h0427;
+write_dat<=8'h01;  //port-> 1
+end
+//5.3.2.5 Static Address Table Entry 3 Register
+8'd112:begin 
+write_add<=16'h0429;
+write_dat<=8'h01;
+end
+8'd113:begin 
+write_add<=16'h042A;
+write_dat<=8'h00;
+end
+8'd114:begin 
+write_add<=16'h042B;
+write_dat<=8'h26;
+end
+//5.3.2.6 Static Address Table Entry 4 Register
+8'd115:begin 
+write_add<=16'h042C;
+write_dat<=8'h55;
+end
+8'd116:begin 
+write_add<=16'h042D;
+write_dat<=8'hDB;
+end
+8'd117:begin 
+write_add<=16'h042E;
+write_dat<=8'hF1; //FF
+end
+8'd118:begin 
+write_add<=16'h042F;
+write_dat<=8'h2A; //FF
+end
+//5.1.5.9 Static Address and Reserved Multicast Table Control Register 
+8'd119:begin 
+write_add<=16'h041D;
+write_dat<=8'h00;
+end
+8'd120:begin 
+write_add<=16'h041F;
+write_dat<=8'h80;
+end
+/////STATIC ADDRESS TABLE -> FA-F0-80-4C-C7-F0 ////////////////////
+//5.3.2.3 Static Address Table Entry 1 Register
+8'd121:begin 
+write_add<=16'h0420;
+write_dat<=8'h9c;
+end
+8'd122:begin 
+write_add<=16'h0423;
+write_dat<=8'h07; 
+end
+//5.3.2.4 Static Address Table Entry 2 Register
+8'd123:begin 
+write_add<=16'h0427;
+write_dat<=8'h04; //PORT -> 3
+end
+//5.3.2.5 Static Address Table Entry 3 Register
+8'd124:begin 
+write_add<=16'h0429;
+write_dat<=8'h01;
+end
+8'd125:begin 
+write_add<=16'h042A;
+write_dat<=8'hFA;
+end
+8'd126:begin 
+write_add<=16'h042B;
+write_dat<=8'hF0;
+end
+//5.3.2.6 Static Address Table Entry 4 Register
+8'd127:begin 
+write_add<=16'h042C;
+write_dat<=8'h80;
+end
+8'd128:begin 
+write_add<=16'h042D;
+write_dat<=8'h4C;
+end
+8'd129:begin 
+write_add<=16'h042E;
+write_dat<=8'hC7;
+end
+8'd130:begin 
+write_add<=16'h042F;
+write_dat<=8'hF0;
+end
+//5.1.5.9 Static Address and Reserved Multicast Table Control Register 
+8'd131:begin 
+write_add<=16'h041D;
+write_dat<=8'h01;
+end
+8'd132:begin 
+write_add<=16'h041F;
+write_dat<=8'h80;
+end
+
+/////STATIC ADDRESS TABLE -> FA-F0-80-4C-C7-F2 ////////////////////
+//5.3.2.3 Static Address Table Entry 1 Register
+8'd133:begin 
+write_add<=16'h0420;
+write_dat<=8'h9C;
+end
+8'd134:begin 
+write_add<=16'h0423;
+write_dat<=8'h07; 
+end
+//5.3.2.4 Static Address Table Entry 2 Register
+8'd135:begin 
+write_add<=16'h0427;
+write_dat<=8'h02; //PORT -> 2
+end
+//5.3.2.5 Static Address Table Entry 3 Register
+8'd136:begin 
+write_add<=16'h0429;
+write_dat<=8'h01;
+end
+8'd137:begin 
+write_add<=16'h042A;
+write_dat<=8'hFA;
+end
+8'd138:begin 
+write_add<=16'h042B;
+write_dat<=8'hF0;
+end
+//5.3.2.6 Static Address Table Entry 4 Register
+8'd139:begin 
+write_add<=16'h042C;
+write_dat<=8'h80;
+end
+8'd140:begin 
+write_add<=16'h042D;
+write_dat<=8'h4C;
+end
+8'd141:begin 
+write_add<=16'h042E;
+write_dat<=8'hC7;
+end
+8'd142:begin 
+write_add<=16'h042F;
+write_dat<=8'hF2;
+end
+//5.1.5.9 Static Address and Reserved Multicast Table Control Register 
+8'd143:begin 
+write_add<=16'h041D;
+write_dat<=8'h02;
+end
+8'd144:begin 
+write_add<=16'h041F;
+write_dat<=8'h80;
+end
+
+
+/////STATIC ADDRESS TABLE -> FA-F0-80-4C-C7-F4 ////////////////////
+//5.3.2.3 Static Address Table Entry 1 Register
+8'd145:begin 
+write_add<=16'h0420;
+write_dat<=8'h9C;
+end
+8'd146:begin 
+write_add<=16'h0423;
+write_dat<=8'h07; 
+end
+//5.3.2.4 Static Address Table Entry 2 Register
+8'd147:begin 
+write_add<=16'h0427;
+write_dat<=8'h02; //PORT -> 2
+end
+//5.3.2.5 Static Address Table Entry 3 Register
+8'd148:begin 
+write_add<=16'h0429;
+write_dat<=8'h01;
+end
+8'd149:begin 
+write_add<=16'h042A;
+write_dat<=8'hFA;
+end
+8'd150:begin 
+write_add<=16'h042B;
+write_dat<=8'hF0;
+end
+//5.3.2.6 Static Address Table Entry 4 Register
+8'd151:begin 
+write_add<=16'h042C;
+write_dat<=8'h80;
+end
+8'd152:begin 
+write_add<=16'h042D;
+write_dat<=8'h4C;
+end
+8'd153:begin 
+write_add<=16'h042E;
+write_dat<=8'hC7;
+end
+8'd154:begin 
+write_add<=16'h042F;
+write_dat<=8'hF4;
+end
+//5.1.5.9 Static Address and Reserved Multicast Table Control Register 
+8'd155:begin 
+write_add<=16'h041D;
+write_dat<=8'h03;
+end
+8'd156:begin 
+write_add<=16'h041F;
+write_dat<=8'h80;
+end
+
+//5.2.7.3 Port Ingress MAC Control Register
+8'd157:begin 
+write_add<=16'h1802;
+write_dat<=8'h80;
+end
+8'd158:begin 
+write_add<=16'h2802;
+write_dat<=8'h80;
+end
+8'd159:begin 
+write_add<=16'h3802;
+write_dat<=8'h80;
+end
+//5.2.8.2 Port Transmit Queue PVID Register
+8'd160:begin 
+write_add<=16'h1907;
+write_dat<=8'h01; //01
+end
+8'd161:begin 
+write_add<=16'h2907;
+write_dat<=8'h01; //01
+end
+8'd162:begin 
+write_add<=16'h3907;
+write_dat<=8'h01; //01
+end
+//5.2.10.1 Port Control 2 Register 
+8'd163:begin 
+write_add<=16'h1B00;
+write_dat<=8'h01;
+end
+8'd164:begin 
+write_add<=16'h2B00;
+write_dat<=8'h01;
+end
+8'd165:begin 
+write_add<=16'h3B00;
+write_dat<=8'h01;
+end
+
+//5.1.4.27 Switch MAC Control 5 Register
+8'd166:begin 
+write_add<=16'h0335;
+write_dat<=8'h10;
+end
+
+8'd167:begin 
+write_add<=16'h1914;
+write_dat<=8'h80;
+end
+
+8'd168:begin 
+write_add<=16'h2914;
+write_dat<=8'h80;
+end
+
+8'd169:begin 
+write_add<=16'h3914;
+write_dat<=8'h80;
+end
+
+8'd170:begin 
+write_add<=16'h1915;
+write_dat<=8'h05;
+end
+
+8'd171:begin 
+write_add<=16'h2915;
+write_dat<=8'h01;
+end
+
+8'd172:begin 
+write_add<=16'h3915;
+write_dat<=8'h01;
+end
+
+
+//5.2.7.2 Port Priority Control Register
+//port-1
+8'd173:begin 
+write_add<=16'h1801;
+write_dat<=8'h04;
+end
+8'd174:begin 
+write_add<=16'h2801;
+write_dat<=8'h04;
+end
+//port-2
+8'd175:begin 
+write_add<=16'h3801;
+write_dat<=8'h04;
+end
+
+
+
+
+
+
+
+default:begin 
+write_add<=16'h00;
+write_dat<=8'h00;
+end 
+endcase
+end 
+end
+
+
+always@(posedge clk_100Mhz or negedge reset)
+begin 
+ if(!reset)
+ begin 
+ mosi<=1'b0;
+ state<=6'd0;
+ rec_data<=8'h00;
+ write_address_count<=8'd0;
+ read_address_count<=7'd0;
+ stop<=1'b0;
+ end 
+ else 
+begin 
+case(state)
+                /// write command 010 ///
+//write bit 0//
+7'd0:begin
+ if(d_count == 4'd0) 
+begin
+mosi<=1'b0;
+state<=7'd1;
+end 
+else 
+begin 
+mosi<=1'b0;
+state<=7'd0;
+end 
+end 
+//write bit 1//
+7'd1:begin
+ if(d_count == 4'd7) 
+begin
+mosi<=1'b1;
+state<=7'd2;
+end 
+else 
+begin 
+mosi<=1'b0;
+state<=7'd1;
+end 
+end  
+//write bit 0//
+7'd2:begin
+ if(d_count == 4'd7) 
+begin
+mosi<=1'b0;
+state<=7'd3;
+end 
+else 
+begin 
+mosi<=1'b1;
+state<=7'd2;
+end 
+end 
+// add-23 //
+7'd3:begin 
+ if(d_count == 4'd7) 
+begin
+mosi<=1'bx;
+state<=7'd4;
+end 
+else 
+begin 
+mosi<=1'b0;
+state<=7'd3;
+end 
+end
+// add-22 //
+7'd4:begin 
+ if(d_count == 4'd7) 
+begin
+mosi<=1'bx;
+state<=7'd5;
+end 
+else 
+begin 
+mosi<=1'bx;
+state<=7'd4;
+end 
+end
+// add-21 //
+7'd5:begin 
+ if(d_count == 4'd7) 
+begin
+mosi<=1'bx;
+state<=7'd6;
+end 
+else 
+begin 
+mosi<=1'bx;
+state<=7'd5;
+end 
+end
+// add-20 //
+7'd6:begin 
+ if(d_count == 4'd7) 
+begin
+mosi<=1'bx;
+state<=7'd7;
+end 
+else 
+begin 
+mosi<=1'bx;
+state<=7'd6;
+end 
+end
+// add-19 //
+7'd7:begin 
+ if(d_count == 4'd7) 
+begin
+mosi<=1'bx;
+state<=7'd8;
+end 
+else 
+begin 
+mosi<=1'bx;
+state<=7'd7;
+end 
+end
+// add-18 //
+7'd8:begin 
+ if(d_count == 4'd7) 
+begin
+mosi<=1'bx;
+state<=7'd9;
+end 
+else 
+begin 
+mosi<=1'bx;
+state<=7'd8;
+end 
+end
+// add-17 //
+7'd9:begin 
+ if(d_count == 4'd7) 
+begin
+mosi<=1'bx;
+state<=7'd10;
+end 
+else 
+begin 
+mosi<=1'bx;
+state<=7'd9;
+end 
+end
+// add-16 //
+7'd10:begin 
+ if(d_count == 4'd7) 
+begin
+mosi<=1'bx;
+state<=7'd11;
+end 
+else 
+begin 
+mosi<=1'bx;
+state<=7'd10;
+end 
+end
+//add-15//
+7'd11:begin
+if(d_count == 4'd7) 
+begin
+mosi<=write_address[15];
+state<=7'd12;
+end 
+else 
+begin
+mosi<=1'bx;
+state<=7'd11;
+end 
+end 
+// add-14 //
+7'd12:begin 
+if(d_count == 4'd7) 
+begin
+mosi<=write_address[14];
+state<=7'd13;
+end 
+else 
+begin 
+mosi<=write_address[15];
+state<=7'd12;
+end 
+end 
+// add-13 //
+7'd13:begin 
+if(d_count == 4'd7) 
+begin
+mosi<=write_address[13];
+state<=7'd14;
+end 
+else 
+begin 
+mosi<=write_address[14];
+state<=7'd13;
+end 
+end 
+// add-12 //
+7'd14:begin 
+if(d_count == 4'd7) 
+begin
+mosi<=write_address[12];
+state<=7'd15;
+end 
+else 
+begin 
+mosi<=write_address[13];
+state<=7'd14;
+end 
+end 
+// add-11 //
+7'd15:begin 
+if(d_count == 4'd7) 
+begin
+mosi<=write_address[11];
+state<=7'd16;
+end 
+else 
+begin 
+mosi<=write_address[12];
+state<=7'd15;
+end 
+end 
+// add-10 //
+7'd16:begin 
+if(d_count == 4'd7) 
+begin
+mosi<=write_address[10];
+state<=7'd17;
+end 
+else 
+begin 
+mosi<=write_address[11];
+state<=7'd16;
+end 
+end  
+// add-9 //
+7'd17:begin 
+if(d_count == 4'd7) 
+begin
+mosi<=write_address[9];
+state<=7'd18;
+end 
+else 
+begin 
+mosi<=write_address[10];
+state<=7'd17;
+end 
+end
+// add-8 //
+7'd18:begin 
+if(d_count == 4'd7) 
+begin
+mosi<=write_address[8];
+state<=7'd19;
+end 
+else 
+begin 
+mosi<=write_address[9];
+state<=7'd18;
+end 
+end
+// add-7 //
+7'd19:begin 
+if(d_count == 4'd7) 
+begin
+mosi<=write_address[7];
+state<=7'd20;
+end 
+else 
+begin 
+mosi<=write_address[8];
+state<=7'd19;
+end 
+end
+// add-6 //
+7'd20:begin 
+if(d_count == 4'd7) 
+begin
+mosi<=write_address[6];
+state<=7'd21;
+end 
+else 
+begin 
+mosi<=write_address[7];
+state<=7'd20;
+end 
+end
+// add-5 //
+7'd21:begin 
+if(d_count == 4'd7) 
+begin
+mosi<=write_address[5];
+state<=7'd22;
+end 
+else 
+begin 
+mosi<=write_address[6];
+state<=7'd21;
+end 
+end
+// add-4 //
+7'd22:begin 
+if(d_count == 4'd7) 
+begin
+mosi<=write_address[4];
+state<=7'd23;
+end 
+else 
+begin 
+mosi<=write_address[5];
+state<=7'd22;
+end 
+end
+// add-3 //
+7'd23:begin 
+if(d_count == 4'd7) 
+begin
+mosi<=write_address[3];
+state<=7'd24;
+end 
+else 
+begin 
+mosi<=write_address[4];
+state<=7'd23;
+end 
+end
+// add-2 //
+7'd24:begin 
+if(d_count == 4'd7) 
+begin
+mosi<=write_address[2];
+state<=7'd25;
+end 
+else 
+begin 
+mosi<=write_address[3];
+state<=7'd24;
+end 
+end
+// add-1 //
+7'd25:begin 
+if(d_count == 4'd7) 
+begin
+mosi<=write_address[1];
+state<=7'd26;
+end 
+else 
+begin 
+mosi<=write_address[2];
+state<=7'd25;
+end 
+end
+// add-0 //
+7'd26:begin 
+if(d_count == 4'd7) 
+begin
+mosi<=write_address[0];
+state<=7'd27;
+end 
+else 
+begin 
+mosi<=write_address[1];
+state<=7'd26;
+end 
+end
+// tr-1 //
+7'd27:begin
+if(d_count == 4'd7) 
+begin
+mosi<=1'bx;
+state<=7'd28;
+end
+else 
+begin
+mosi<=write_address[0];
+state<=7'd27;
+end 
+end 
+// tr-2 //
+7'd28:begin
+if(d_count == 4'd7)
+begin
+mosi<=1'bx;
+state<=7'd29;
+end 
+else 
+begin
+mosi<=1'bx;
+state<=7'd28;
+end 
+end 
+// tr-3 //
+7'd29:begin
+if(d_count == 4'd7)
+begin
+mosi<=1'bx;
+state<=7'd30;
+end 
+else 
+begin
+mosi<=1'bx;
+state<=7'd29;
+end 
+end 
+
+// tr-4 //
+7'd30:begin
+if(d_count == 4'd7)
+begin
+mosi<=1'bx;
+state<=7'd31;
+end 
+else 
+begin
+mosi<=1'bx;
+state<=7'd30;
+end 
+end 
+
+// tr-5 //
+7'd31:begin
+if(d_count == 4'd7)
+begin
+mosi<=1'bx;
+state<=7'd32;
+end 
+else 
+begin
+mosi<=1'bx;
+state<=7'd31;
+end 
+end 
+// data-7 //
+7'd32:begin
+if(d_count == 4'd7)
+begin
+mosi<=write_data[7];
+state<=7'd33;
+end 
+else 
+begin 
+mosi<=1'bx;
+state<=7'd32;
+end 
+end 
+// data-6 //
+7'd33:begin
+if(d_count == 4'd7)
+begin
+mosi<=write_data[6];
+state<=7'd34;
+end
+else 
+begin
+mosi<=write_data[7];
+state<=7'd33;
+end 
+end 
+// data-5 //
+7'd34:begin
+if(d_count == 4'd7)
+begin
+mosi<=write_data[5];
+state<=7'd35;
+end
+else 
+begin
+mosi<=write_data[6];
+state<=7'd34;
+end 
+end
+
+// data-4 //
+7'd35:begin
+if(d_count == 4'd7)
+begin
+mosi<=write_data[4];
+state<=7'd36;
+end
+else 
+begin
+mosi<=write_data[5];
+state<=7'd35;
+end 
+end
+
+// data-3 //
+7'd36:begin
+if(d_count == 4'd7)
+begin
+mosi<=write_data[3];
+state<=7'd37;
+end
+else 
+begin
+mosi<=write_data[4];
+state<=7'd36;
+end 
+end
+
+// data-2 //
+7'd37:begin
+if(d_count == 4'd7)
+begin
+mosi<=write_data[2];
+state<=7'd38;
+end
+else 
+begin
+mosi<=write_data[3];
+state<=7'd37;
+end 
+end
+
+// data-1 //
+7'd38:begin
+if(d_count == 4'd7)
+begin
+mosi<=write_data[1];
+state<=7'd39;
+end
+else 
+begin
+mosi<=write_data[2];
+state<=7'd38;
+end 
+end
+
+// data-0 //
+7'd39:begin
+if(d_count == 4'd7)
+begin
+mosi<=write_data[0];
+state<=7'd40;
+end
+else 
+begin
+mosi<=write_data[1];
+state<=7'd39;
+end 
+end
+// stop //
+7'd40:begin 
+if(d_count == 4'd7)
+begin
+stop<=1'b1;
+mosi<=1'b0;
+state<=7'd41;
+end 
+else 
+begin 
+mosi<=write_data[0];
+state<=7'd40;
+end 
+end 
+
+7'd41:begin 
+if(d_count == 4'd0)
+begin
+
+if(write_address_count == stop_write)
+begin 
+stop<=1'b1;
+mosi<=1'b0;
+write_address_count<=write_address_count; //7'd0;
+state<=7'd42;
+end 
+else 
+begin 
+stop<=1'b0;
+mosi<=1'b0;
+write_address_count<=write_address_count + 8'd1;
+state<=7'd0;
+end 
+end 
+else 
+begin 
+stop<=1'b1;
+mosi<=1'b0;
+state<=7'd41;
+end 
+end 
+
+7'd42:begin
+stop<=1'b1;
+mosi<=1'b0;
+state<=7'd42;
+end 
+
+
+
+default:begin 
+mosi<=1'b0;
+state<=7'd1;
+rec_data<=8'h00;
+write_address_count<=8'd0;
+read_address_count<=7'd0;
+stop<=1'b0;
+end 
+endcase 
+end 
+
+end
+
+endmodule
